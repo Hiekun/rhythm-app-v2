@@ -8,6 +8,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="リズムアプリ">
+    
+    <!-- 音声ファイルの事前読み込み -->
+    <link rel="preload" href="4.mp3" as="audio">
+    <link rel="preload" href="8.mp3" as="audio">
+    
     <script>
         if ("serviceWorker" in navigator) {
             navigator.serviceWorker.register("service-worker.js").then(() => {
@@ -545,9 +550,10 @@
             dodo: new Audio("8.mp3")
         };
 
-        // 音声ファイルの事前ロード
+        // 音声ファイルの事前ロード（完全プリロード）
         function preloadSounds() {
             Object.values(sounds).forEach(audio => {
+                audio.preload = "auto";
                 audio.load();
             });
         }
@@ -642,12 +648,11 @@
             initNotePanels();
         });
 
-        // 音を鳴らす
+        // 音を鳴らす（クローン方式で遅延を防ぐ）
         function playSound(type) {
             if (sounds[type]) {
-                sounds[type].pause();
-                sounds[type].currentTime = 0;
-                sounds[type].play().catch(error => console.error("再生エラー:", error));
+                const clonedSound = sounds[type].cloneNode();
+                clonedSound.play().catch(error => console.error("再生エラー:", error));
             }
         }
 
@@ -761,29 +766,18 @@
                 // 現在の音符をハイライト
                 noteDisplays[index].classList.add('playing');
                 
-                // 音を再生（休符以外）
+                // 音を再生（休符以外）- クローン方式で遅延を防ぐ
                 if (allNotes[index].type !== 'rest') {
-                    playSound(allNotes[index].type);
+                    const clonedSound = sounds[allNotes[index].type].cloneNode();
+                    clonedSound.play().catch(error => console.error("再生エラー:", error));
                 }
                 
-                // 基本は750ms
-                let noteDuration = baseNoteDuration;
-                
-                // 現在が8分音符で、次も8分音符の場合は追加の遅延
-                if (index < allNotes.length - 1) {
-                    const currentNote = allNotes[index];
-                    const nextNote = allNotes[index + 1];
-                    
-                    if (currentNote.duration === '8' && nextNote.duration === '8') {
-                        noteDuration = baseNoteDuration + 25; // 750ms + 25ms = 775ms
-                    }
-                }
-                
+                // 全て750ms均一
                 setTimeout(() => {
                     noteDisplays[index].classList.remove('playing');
                     index++;
                     playNext();
-                }, noteDuration);
+                }, baseNoteDuration);
             }
             
             playNext();
