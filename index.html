@@ -758,17 +758,29 @@
                     return;
                 }
                 
+                // 現在の音符をハイライト
                 noteDisplays[index].classList.add('playing');
                 
+                // 音を再生（休符以外）
                 if (allNotes[index].type !== 'rest') {
                     playSound(allNotes[index].type);
+                }
+                
+                // 音符の長さに応じて再生時間を決定
+                let noteDuration;
+                if (allNotes[index].duration === '8') {
+                    // 8分音符は4分音符の半分の長さ
+                    noteDuration = baseNoteDuration / 2; // 375ms
+                } else {
+                    // 4分音符と4分休符
+                    noteDuration = baseNoteDuration; // 750ms
                 }
                 
                 setTimeout(() => {
                     noteDisplays[index].classList.remove('playing');
                     index++;
                     playNext();
-                }, baseNoteDuration);
+                }, noteDuration);
             }
             
             playNext();
