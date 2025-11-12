@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>リズムづくりアプリ</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="リズムアプリ">
+    <script>
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("service-worker.js").then(() => {
+                console.log("Service Worker 登録完了");
+            }).catch((error) => {
+                console.log("Service Worker 登録失敗:", error);
+            });
+        }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            text-align: center;
+            font-family: 'Rounded Mplus 1c', 'M PLUS Rounded 1c', 'Hiragino Maru Gothic Pro', 'Yu Gothic UI', 'Meiryo', sans-serif;
+            background: #f8f8f8;
+            overflow-x: hidden;
+        }
+
+        /* ヘッダー */
+        header {
+            background: linear-gradient(to right, #003c5f, #007f8c);
+            color: white;
+            padding: 20px;
+            box-shadow: 0px 6px 15px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .header-emblem {
+            position: absolute;
+            left: 30px;
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 5px;
+            padding: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .header-emblem img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 48px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .drum-icon {
+            font-size: 60px;
+        }
+
+        .container {
+            margin: 0 auto;
+            padding: 30px 20px;
+            width: 100%;
+            max-width: 1200px;
+            min-height: calc(100vh - 120px);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+        }
+
+        /* ページ切り替え用 */
+        .page {
+            display: none;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ========== 1ページ目のスタイル ========== */
+        .page-title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #333;
+            margin: 20px auto 30px auto;
+            padding: 12px 30px;
+            border-radius: 10px;
+            display: inline-block;
+            line-height: 1.4;
+        }
+
+        .page-title.yellow {
+            background: #fff8dc;
+            border: 3px solid #ffcc00;
+        }
+
+        .page-title.blue {
+            background: #cce5ff;
+            border: 3px solid #007bff;
+        }
+
+        #notes-container {
+            position: relative;
+            margin: 20px auto 30px auto;
+            max-width: 900px;
+            height: 350px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .notes-wrapper {
+            position: relative;
+            width: 800px;
+            height: 100%;
+        }
+
+        .note-panel {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 140px;
+            height: 140px;
+            background: white;
+            border: 3px solid #333;
+            border-radius: 15px;
+            cursor: pointer;
+            box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+
+        .note-panel:hover {
+            transform: scale(1.05);
+        }
+
+        .note-panel.selected {
+            opacity: 0.3;
+            cursor: not-allowed;
+            transform: scale(0.95);
+        }
+
+        .note-panel img {
+            width: 70%;
+            height: auto;
+            margin-bottom: 10px;
+            pointer-events: none;
+        }
+
+        .note-panel .label {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        /* 上段4つ、下段3つの配置 - 均等間隔で中央寄せ */
+        .note-panel.pos-0 { left: 5%; top: 0; }
+        .note-panel.pos-1 { left: 26.5%; top: 0; }
+        .note-panel.pos-2 { left: 48%; top: 0; }
+        .note-panel.pos-3 { left: 69.5%; top: 0; }
+        .note-panel.pos-4 { left: 16%; bottom: 0; }
+        .note-panel.pos-5 { left: 40%; bottom: 0; }
+        .note-panel.pos-6 { left: 64%; bottom: 0; }
+
+        /* ボタン共通 */
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px 35px;
+            font-size: 24px;
+            font-weight: bold;
+            background: white;
+            border: 3px solid #333;
+            border-radius: 15px;
+            box-shadow: 4px 4px 8px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .button:hover {
+            transform: scale(1.05);
+            box-shadow: 6px 6px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .button:active {
+            transform: scale(0.98);
+        }
+
+        .button img {
+            width: 40px;
+            height: 40px;
+            margin-right: 10px;
+        }
+
+        /* ========== 2ページ目のスタイル ========== */
+        .staff-container {
+            position: relative;
+            margin: 30px auto;
+            padding: 80px 20px 50px 20px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0px 6px 15px rgba(0, 0, 0, 0.3);
+            max-width: 1100px;
+        }
+
+        /* 五線譜 */
+        .staff {
+            position: relative;
+            height: 220px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .staff-lines {
+            position: absolute;
+            width: 100%;
+            height: 120px;
+            top: 40px;
+            left: 0;
+        }
+
+        .staff-lines .line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: #333;
+            left: 0;
+        }
+
+        .staff-lines .line:nth-child(1) { top: 0; }
+        .staff-lines .line:nth-child(2) { top: 30px; }
+        .staff-lines .line:nth-child(3) { top: 60px; }
+        .staff-lines .line:nth-child(4) { top: 90px; }
+        .staff-lines .line:nth-child(5) { top: 120px; }
+
+        /* ト音記号 - 渦巻きが第2線の位置、上下に大きくはみ出す */
+        .clef {
+            position: absolute;
+            left: 10px;
+            top: -35px;
+            font-size: 220px;
+            z-index: 10;
+            line-height: 1;
+            font-weight: normal;
+            transform: scaleX(0.75);
+            transform-origin: left center;
+        }
+
+        /* 小節線（1本だけ - 4個目と5個目の間） */
+        .bar-line {
+            position: absolute;
+            width: 2px;
+            height: 120px;
+            background: #333;
+            top: 40px;
+            z-index: 5;
+        }
+
+        /* 音符配置エリア */
+        .notes-display {
+            position: absolute;
+            top: 40px;
+            left: 105px;
+            right: 15px;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: space-evenly;
+            z-index: 10;
+        }
+
+        .note-display {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 105px;
+            height: 105px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 2px solid #333;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .note-display.playing {
+            background: #ffeb3b;
+            transform: scale(1.15);
+            box-shadow: 0 0 20px rgba(255, 235, 59, 0.8);
+            border-color: #f57c00;
+            border-width: 3px;
+        }
+
+        .note-display img {
+            width: 66px;
+            height: auto;
+            margin-bottom: 5px;
+        }
+
+        .note-display .label {
+            font-size: 17px;
+            font-weight: bold;
+        }
+
+        /* カウントダウン表示 */
+        .countdown {
+            position: absolute;
+            top: -40px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #007f8c;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.2); }
+        }
+
+        /* レスポンシブ対応 */
+        @media (max-width: 1024px) {
+            .header-title {
+                font-size: 36px;
+            }
+
+            .drum-icon {
+                font-size: 45px;
+            }
+
+            .header-emblem {
+                width: 60px;
+                height: 60px;
+                left: 15px;
+            }
+
+            .page-title {
+                font-size: 24px;
+            }
+
+            #notes-container {
+                height: 300px;
+            }
+
+            .note-panel {
+                width: 110px;
+                height: 110px;
+            }
+
+            .staff-container {
+                padding: 70px 20px 40px 20px;
+            }
+
+            .notes-display {
+                left: 95px;
+                right: 15px;
+            }
+
+            .note-display {
+                width: 92px;
+                height: 92px;
+            }
+
+            .note-display img {
+                width: 58px;
+            }
+
+            .clef {
+                font-size: 190px;
+                top: -30px;
+                transform: scaleX(0.75);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header-title {
+                font-size: 28px;
+            }
+
+            .drum-icon {
+                font-size: 35px;
+            }
+
+            .header-emblem {
+                width: 50px;
+                height: 50px;
+            }
+
+            .page-title {
+                font-size: 20px;
+                padding: 10px 20px;
+            }
+
+            .button {
+                font-size: 20px;
+                padding: 12px 25px;
+            }
+
+            .staff-container {
+                padding: 60px 15px 35px 15px;
+            }
+
+            .notes-display {
+                left: 85px;
+                right: 15px;
+            }
+
+            .clef {
+                font-size: 170px;
+                top: -25px;
+                transform: scaleX(0.75);
+            }
+
+            .note-display {
+                width: 75px;
+                height: 75px;
+            }
+
+            .note-display img {
+                width: 50px;
+            }
+
+            .note-display .label {
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- ヘッダー -->
+    <header>
+        <div class="header-emblem">
+            <img src="https://pbs.twimg.com/profile_images/3183389478/9d78aa1022f5138f44d57d920897d889_400x400.png" alt="校章">
+        </div>
+        <div class="header-title">
+            <span class="drum-icon">🥁</span>
+            <span>リズムづくりアプリ</span>
+            <span class="drum-icon">🥁</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- ========== 1ページ目：音符選択 ========== -->
+        <div id="page1" class="page active">
+            <div class="page-title yellow">したのおんぷをすきなじゅんばんにすべてタップしましょう。</div>
+            
+            <div id="notes-container">
+                <div class="notes-wrapper">
+                    <!-- JavaScriptで動的に生成 -->
+                </div>
+            </div>
+
+            <div class="button-container">
+                <button class="button" id="reset-btn">
+                    <img src="https://cdn-icons-png.freepik.com/512/10120/10120088.png" alt="リセット">
+                    りせっと
+                </button>
+            </div>
+        </div>
+
+        <!-- ========== 2ページ目：音符表示・再生 ========== -->
+        <div id="page2" class="page">
+            <div class="page-title blue">あなたがえらんだじゅんばんでえんそうします</div>
+            
+            <div class="staff-container">
+                <div id="countdown" class="countdown" style="display: none;"></div>
+                
+                <!-- 五線譜 -->
+                <div class="staff">
+                    <!-- ト音記号 -->
+                    <div class="clef">𝄞</div>
+                    
+                    <!-- 五線（5本） -->
+                    <div class="staff-lines">
+                        <div class="line"></div>
+                        <div class="line"></div>
+                        <div class="line"></div>
+                        <div class="line"></div>
+                        <div class="line"></div>
+                    </div>
+                    
+                    <!-- 音符表示エリア -->
+                    <div class="notes-display" id="notes-display"></div>
+                </div>
+            </div>
+
+            <div class="button-container">
+                <button class="button" id="play-btn">
+                    <img src="https://kotonohaworks.com/free-icons/wp-content/uploads/kkrn_icon_saisei_3.png" alt="再生">
+                    さいせい
+                </button>
+                <button class="button" id="back-btn">
+                    <img src="https://cdn-icons-png.flaticon.com/512/3114/3114883.png" alt="戻る">
+                    もどる
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 音声オブジェクト
+        const sounds = {
+            don: new Audio("4.mp3"),
+            dodo: new Audio("8.mp3")
+        };
+
+        // 音声ファイルの事前ロード
+        function preloadSounds() {
+            Object.values(sounds).forEach(audio => {
+                audio.load();
+            });
+        }
+
+        // グローバル変数
+        let selectedNotes = [];
+        let isPlaying = false;
+
+        // 音再生の基本設定
+        const baseNoteDuration = 750;
+
+        // 音符データ
+        const noteData = [
+            { type: "don", duration: "4", imgSrc: "https://www.kyogei.co.jp/wp-content/uploads/2020/02/yonbuonpu.jpg", label: "(どん)" },
+            { type: "don", duration: "4", imgSrc: "https://www.kyogei.co.jp/wp-content/uploads/2020/02/yonbuonpu.jpg", label: "(どん)" },
+            { type: "don", duration: "4", imgSrc: "https://www.kyogei.co.jp/wp-content/uploads/2020/02/yonbuonpu.jpg", label: "(どん)" },
+            { type: "don", duration: "4", imgSrc: "https://www.kyogei.co.jp/wp-content/uploads/2020/02/yonbuonpu.jpg", label: "(どん)" },
+            { type: "dodo", duration: "8", imgSrc: "https://www.kyogei.co.jp/wp-content/uploads/hatibuonpu2.jpg", label: "(どど)" },
+            { type: "dodo", duration: "8", imgSrc: "https://www.kyogei.co.jp/wp-content/uploads/hatibuonpu2.jpg", label: "(どど)" },
+            { type: "dodo", duration: "8", imgSrc: "https://www.kyogei.co.jp/wp-content/uploads/hatibuonpu2.jpg", label: "(どど)" }
+        ];
+
+        // ========== 1ページ目の処理 ========== //
+        
+        // 音符パネルをランダムに配置
+        function initNotePanels() {
+            const wrapper = document.querySelector('.notes-wrapper');
+            wrapper.innerHTML = '';
+            
+            // 配置位置をシャッフル
+            const positions = [0, 1, 2, 3, 4, 5, 6];
+            shuffleArray(positions);
+            
+            noteData.forEach((note, index) => {
+                const panel = document.createElement('div');
+                panel.className = `note-panel pos-${positions[index]}`;
+                panel.dataset.type = note.type;
+                panel.dataset.duration = note.duration;
+                panel.dataset.index = index;
+                
+                const img = document.createElement('img');
+                img.src = note.imgSrc;
+                img.alt = note.label;
+                
+                const label = document.createElement('div');
+                label.className = 'label';
+                label.textContent = note.label;
+                
+                panel.appendChild(img);
+                panel.appendChild(label);
+                wrapper.appendChild(panel);
+                
+                // クリックイベント
+                panel.addEventListener('click', function() {
+                    if (this.classList.contains('selected')) {
+                        return;
+                    }
+                    
+                    this.classList.add('selected');
+                    
+                    const selectedNote = {
+                        type: this.dataset.type,
+                        duration: this.dataset.duration,
+                        imgSrc: img.src,
+                        label: label.textContent
+                    };
+                    selectedNotes.push(selectedNote);
+                    
+                    playSound(selectedNote.type);
+                    
+                    if (selectedNotes.length === 7) {
+                        setTimeout(() => {
+                            goToPage2();
+                        }, 500);
+                    }
+                });
+            });
+        }
+
+        // 配列をシャッフル
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // リセットボタンの処理
+        document.getElementById('reset-btn').addEventListener('click', function() {
+            selectedNotes = [];
+            initNotePanels();
+        });
+
+        // 音を鳴らす
+        function playSound(type) {
+            if (sounds[type]) {
+                sounds[type].pause();
+                sounds[type].currentTime = 0;
+                sounds[type].play().catch(error => console.error("再生エラー:", error));
+            }
+        }
+
+        // ========== 2ページ目の処理 ========== //
+        
+        // 2ページ目へ遷移
+        function goToPage2() {
+            document.getElementById('page1').classList.remove('active');
+            document.getElementById('page2').classList.add('active');
+            
+            displaySelectedNotes();
+            startCountdown();
+        }
+
+        // 選択した音符を五線譜上に表示
+        function displaySelectedNotes() {
+            const notesDisplay = document.getElementById('notes-display');
+            const staff = document.querySelector('.staff');
+            
+            // 既存の小節線を削除
+            const existingLines = staff.querySelectorAll('.bar-line');
+            existingLines.forEach(line => line.remove());
+            
+            notesDisplay.innerHTML = '';
+            
+            const allNotes = [...selectedNotes];
+            allNotes.push({
+                type: 'rest',
+                duration: '4',
+                imgSrc: 'https://www.kyogei.co.jp/wp-content/uploads/2020/02/shibukyufu.jpg',
+                label: '(うん)'
+            });
+            
+            allNotes.forEach((note, index) => {
+                const noteDiv = document.createElement('div');
+                noteDiv.className = 'note-display';
+                noteDiv.dataset.index = index;
+                
+                const img = document.createElement('img');
+                img.src = note.imgSrc;
+                img.alt = note.label;
+                
+                const label = document.createElement('div');
+                label.className = 'label';
+                label.textContent = note.label;
+                
+                noteDiv.appendChild(img);
+                noteDiv.appendChild(label);
+                notesDisplay.appendChild(noteDiv);
+            });
+            
+            // 音符が配置された後、4個目と5個目の間に小節線を配置
+            setTimeout(() => {
+                const noteDisplays = document.querySelectorAll('.note-display');
+                
+                // 4個目と5個目の間に太い小節線を配置
+                if (noteDisplays.length >= 5) {
+                    const fourthNote = noteDisplays[3];
+                    const fifthNote = noteDisplays[4];
+                    const rect4 = fourthNote.getBoundingClientRect();
+                    const rect5 = fifthNote.getBoundingClientRect();
+                    const staffRect = staff.getBoundingClientRect();
+                    
+                    const barLine = document.createElement('div');
+                    barLine.className = 'bar-line';
+                    
+                    const barPosition = ((rect4.right + rect5.left) / 2) - staffRect.left;
+                    barLine.style.left = barPosition + 'px';
+                    
+                    staff.appendChild(barLine);
+                }
+            }, 50);
+        }
+
+        // カウントダウン開始
+        function startCountdown() {
+            const countdownEl = document.getElementById('countdown');
+            countdownEl.style.display = 'block';
+            
+            let count = 5;
+            countdownEl.textContent = count;
+            
+            const countInterval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownEl.textContent = count;
+                } else {
+                    clearInterval(countInterval);
+                    countdownEl.style.display = 'none';
+                    playSequence();
+                }
+            }, 1000);
+        }
+
+        // 音符を順番に再生
+        function playSequence() {
+            if (isPlaying) return;
+            isPlaying = true;
+            
+            const noteDisplays = document.querySelectorAll('.note-display');
+            const allNotes = [...selectedNotes, { type: 'rest', duration: '4' }];
+            
+            let index = 0;
+            
+            function playNext() {
+                if (index >= allNotes.length) {
+                    isPlaying = false;
+                    return;
+                }
+                
+                noteDisplays[index].classList.add('playing');
+                
+                if (allNotes[index].type !== 'rest') {
+                    playSound(allNotes[index].type);
+                }
+                
+                setTimeout(() => {
+                    noteDisplays[index].classList.remove('playing');
+                    index++;
+                    playNext();
+                }, baseNoteDuration);
+            }
+            
+            playNext();
+        }
+
+        // 再生ボタン
+        document.getElementById('play-btn').addEventListener('click', function() {
+            if (!isPlaying) {
+                playSequence();
+            }
+        });
+
+        // 戻るボタン
+        document.getElementById('back-btn').addEventListener('click', function() {
+            document.getElementById('page2').classList.remove('active');
+            document.getElementById('page1').classList.add('active');
+            
+            selectedNotes = [];
+            isPlaying = false;
+            initNotePanels();
+        });
+
+        // 初期化
+        window.addEventListener('DOMContentLoaded', () => {
+            preloadSounds();
+            initNotePanels();
+        });
+    </script>
+</body>
+</html>
