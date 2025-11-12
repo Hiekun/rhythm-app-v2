@@ -766,14 +766,17 @@
                     playSound(allNotes[index].type);
                 }
                 
-                // 音符の長さに応じて再生時間を決定
-                let noteDuration;
-                if (allNotes[index].duration === '8') {
-                    // 8分音符は4分音符の半分の長さ
-                    noteDuration = baseNoteDuration / 2; // 375ms
-                } else {
-                    // 4分音符と4分休符
-                    noteDuration = baseNoteDuration; // 750ms
+                // 基本は750ms
+                let noteDuration = baseNoteDuration;
+                
+                // 現在が8分音符で、次も8分音符の場合は追加の遅延
+                if (index < allNotes.length - 1) {
+                    const currentNote = allNotes[index];
+                    const nextNote = allNotes[index + 1];
+                    
+                    if (currentNote.duration === '8' && nextNote.duration === '8') {
+                        noteDuration = baseNoteDuration + 200; // 750ms + 200ms = 950ms
+                    }
                 }
                 
                 setTimeout(() => {
