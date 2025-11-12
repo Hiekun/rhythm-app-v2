@@ -9,10 +9,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="リズムアプリ">
     
-    <!-- 音声ファイルの事前読み込み -->
-    <link rel="preload" href="4.mp3" as="audio">
-    <link rel="preload" href="8.mp3" as="audio">
-    
     <script>
         if ("serviceWorker" in navigator) {
             navigator.serviceWorker.register("service-worker.js").then(() => {
@@ -544,18 +540,56 @@
     </div>
 
     <script>
-        // 音声オブジェクト
-        const sounds = {
-            don: new Audio("4.mp3"),
-            dodo: new Audio("8.mp3")
+        // Web Audio API のセットアップ
+        let audioContext = null;
+        let audioBuffers = {
+            don: null,
+            dodo: null
         };
 
-        // 音声ファイルの事前ロード（完全プリロード）
-        function preloadSounds() {
-            Object.values(sounds).forEach(audio => {
-                audio.preload = "auto";
-                audio.load();
-            });
+        // AudioContextの初期化とアンロック
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            // AudioContextのアンロック（無音再生）
+            if (audioContext.state === 'suspended') {
+                const buffer = audioContext.createBuffer(1, 1, 22050);
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+                source.start(0);
+                
+                audioContext.resume().then(() => {
+                    console.log("AudioContext アンロック完了");
+                });
+            }
+        }
+
+        // 音声ファイルをバッファとして読み込む
+        async function loadAudioBuffer(url, key) {
+            try {
+                const response = await fetch(url);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                audioBuffers[key] = audioBuffer;
+                console.log(`${key} の音声バッファ読み込み完了`);
+            } catch (error) {
+                console.error(`${key} の読み込みエラー:`, error);
+            }
+        }
+
+        // 音声ファイルの事前ロード
+        async function preloadSounds() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            await Promise.all([
+                loadAudioBuffer("4.mp3", "don"),
+                loadAudioBuffer("8.mp3", "dodo")
+            ]);
         }
 
         // グローバル変数
@@ -612,6 +646,9 @@
                         return;
                     }
                     
+                    // 最初のクリックでAudioContextを初期化
+                    initAudioContext();
+                    
                     this.classList.add('selected');
                     
                     const selectedNote = {
@@ -648,12 +685,22 @@
             initNotePanels();
         });
 
-        // 音を鳴らす（クローン方式で遅延を防ぐ）
+        // 音を鳴らす（Web Audio API）
         function playSound(type) {
-            if (sounds[type]) {
-                const clonedSound = sounds[type].cloneNode();
-                clonedSound.play().catch(error => console.error("再生エラー:", error));
+            if (!audioContext || !audioBuffers[type]) {
+                console.error("AudioContextまたはバッファが未初期化");
+                return;
             }
+            
+            // AudioContextがsuspendedの場合は再開
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffers[type];
+            source.connect(audioContext.destination);
+            source.start(0);
         }
 
         // ========== 2ページ目の処理 ========== //
@@ -662,6 +709,9 @@
         function goToPage2() {
             document.getElementById('page1').classList.remove('active');
             document.getElementById('page2').classList.add('active');
+            
+            // AudioContextをアンロック（無音再生）
+            initAudioContext();
             
             displaySelectedNotes();
             startCountdown();
@@ -747,9 +797,20 @@
             }, 1000);
         }
 
-        // 音符を順番に再生
+        // 音符を順番に再生（Web Audio API）
         function playSequence() {
             if (isPlaying) return;
+            
+            // AudioContextが初期化されていない場合は初期化
+            if (!audioContext) {
+                initAudioContext();
+            }
+            
+            // AudioContextがsuspendedの場合は再開
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
             isPlaying = true;
             
             const noteDisplays = document.querySelectorAll('.note-display');
@@ -766,10 +827,12 @@
                 // 現在の音符をハイライト
                 noteDisplays[index].classList.add('playing');
                 
-                // 音を再生（休符以外）- クローン方式で遅延を防ぐ
-                if (allNotes[index].type !== 'rest') {
-                    const clonedSound = sounds[allNotes[index].type].cloneNode();
-                    clonedSound.play().catch(error => console.error("再生エラー:", error));
+                // 音を再生（休符以外）
+                if (allNotes[index].type !== 'rest' && audioBuffers[allNotes[index].type]) {
+                    const source = audioContext.createBufferSource();
+                    source.buffer = audioBuffers[allNotes[index].type];
+                    source.connect(audioContext.destination);
+                    source.start(0);
                 }
                 
                 // 全て750ms均一
@@ -786,6 +849,8 @@
         // 再生ボタン
         document.getElementById('play-btn').addEventListener('click', function() {
             if (!isPlaying) {
+                // ボタンクリックでAudioContextを確実に初期化・再開
+                initAudioContext();
                 playSequence();
             }
         });
@@ -801,8 +866,8 @@
         });
 
         // 初期化
-        window.addEventListener('DOMContentLoaded', () => {
-            preloadSounds();
+        window.addEventListener('DOMContentLoaded', async () => {
+            await preloadSounds();
             initNotePanels();
         });
     </script>
